@@ -1,1 +1,19 @@
+# Data Store Sales
+
+```{r}
+data <- read.csv("C:/Users/Nika Restu Widya/Downloads/train.csv/train.csv")
+head(data)
+```
+
+## Memilih Store 1 , Date, dan Sales
+```{r}
+library(dplyr)
+
+store1 <- data %>%
+  filter(Store == 1) %>%
+  select(Date, Sales) %>%
+  arrange(Date)
+
+print(store1)
+```
 
