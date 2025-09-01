@@ -1,0 +1,506 @@
+---
+title: "TugasPertemuan1_1-828"
+author: "Nika Restu Widya Mujianasta G1401231095"
+date: "2025-09-01"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Library
+
+```{r}
+library("forecast")
+library("graphics")
+library("TTR")
+library("TSA")
+```
+
+# Impor Data Bitcoin 2011 - 2022
+
+```{r}
+library(rio)
+btc <- import("https://raw.githubusercontent.com/NikaRestuWidya/mpdw/main/btc_data_fix_kel10.csv")
+
+```
+
+# Eksplorasi Data
+
+```{r}
+View(btc)
+str(btc)
+dim(btc)
+names(btc)  
+head(btc) 
+```
+
+```{r}
+btc.ts <- ts(btc$price, start = c(2011, 1), frequency = 365)
+```
+
+```{r}
+summary(btc.ts)
+```
+
+```{r}
+# Plot deret waktu
+ts.plot(btc.ts,
+        xlab = "Time Period",
+        ylab = "Price (USD)",
+        main = "Bitcoin Daily Price (2011-2022)")
+
+# Tambahkan titik data
+points(btc.ts)
+```
+
+# Baris 1 - 828
+
+```{r}
+btc1 <- btc[1:828, ]
+
+dim(btc1)
+head(btc1)
+tail(btc1)
+```
+
+```{r}
+btc1.ts <- ts(btc1$price, start = c(2011, 1), frequency = 365)
+```
+
+```{r}
+summary (btc1.ts)
+```
+
+```{r}
+# Plot deret waktu
+ts.plot(btc1.ts,
+        xlab = "Time Period",
+        ylab = "Price (USD)",
+        main = "Bitcoin Daily Price (Baris 1–828)")
+
+# Tambahkan titik data
+points(btc1.ts)
+
+```
+
+# Single Moving Average & Double Moving Average
+
+## Pembagian Data
+
+Pembagian data latih dan data uji dilakukan dengan perbandingan 80% data latih dan 20% data uji.
+
+```{r}
+# Pembagian data 80:20
+training_ma <- btc1[1:662, ]
+testing_ma  <- btc1[663:828, ]
+
+# Ubah ke time series
+btc1.ts     <- ts(btc1$price)
+train_ma.ts <- ts(training_ma$price)
+test_ma.ts  <- ts(testing_ma$price)
+```
+
+## Eksplorasi Data
+
+```{r}
+# Eksplorasi keseluruhan data (828 observasi)
+plot(btc1.ts, col = "red", main = "Plot Semua Data (BTC 1–828)")
+points(btc1.ts)
+
+# Eksplorasi data latih (80%)
+plot(train_ma.ts, col = "blue", main = "Plot Data Latih (BTC 1–662)")
+points(train_ma.ts)
+
+# Eksplorasi data uji (20%)
+plot(test_ma.ts, col = "blue", main = "Plot Data Uji (BTC 663–828)")
+points(test_ma.ts)
+
+```
+
+```{r}
+library(ggplot2)
+
+ggplot() + 
+  geom_line(data = training_ma, aes(x = date, y = price, col = "Data Latih")) +
+  geom_line(data = testing_ma, aes(x = date, y = price, col = "Data Uji")) +
+  labs(x = "Periode Waktu", y = "Price (USD)", color = "Legend") +
+  scale_colour_manual(name = "Keterangan:", 
+                      breaks = c("Data Latih", "Data Uji"),
+                      values = c("blue", "red")) + 
+  theme_bw() + 
+  theme(legend.position = "bottom",
+        plot.caption = element_text(hjust = 0.5, size = 12))
+
+```
+
+## Single Moving Average (SMA)
+
+```{r}
+# Single Moving Average dengan m = 7
+btc1.sma <- SMA(train_ma.ts, n = 7)
+
+# Lihat hasil pemulusan
+btc1.sma
+```
+
+```{r}
+# Data gabungan: aktual, pemulusan (SMA), ramalan
+data.gab <- cbind(
+  aktual    = c(train_ma.ts, rep(NA, length(test_ma.ts))), 
+  pemulusan = c(btc1.sma, rep(NA, length(test_ma.ts))), 
+  ramalan   = c(rep(NA, length(train_ma.ts)), rep(tail(btc1.sma, 1), length(test_ma.ts)))
+)
+
+# Lihat hasil
+data.gab
+
+```
+
+```{r}
+ts.plot(train_ma.ts, 
+        xlab = "Time Period", 
+        ylab = "Price", 
+        main = "SMA N=7 Data BTC (Training)")
+
+points(train_ma.ts)
+lines(data.gab[, "pemulusan"], col = "green", lwd = 2)
+lines(data.gab[, "ramalan"], col = "red", lwd = 2)
+
+legend("topleft",
+       legend = c("Data Aktual", "Data Pemulusan", "Data Peramalan"),
+       lty = 1, col = c("black", "green", "red"),
+       cex = 0.8, lwd = 2)
+```
+
+```{r}
+
+error_train.sma <- train_ma.ts[8:length(train_ma.ts)] - btc1.sma[8:length(train_ma.ts)]
+
+SSE_train.sma  <- sum(error_train.sma^2, na.rm = TRUE)
+MSE_train.sma  <- mean(error_train.sma^2, na.rm = TRUE)
+MAPE_train.sma <- mean(abs(error_train.sma / train_ma.ts[8:length(train_ma.ts)]) * 100, na.rm = TRUE)
+
+akurasi_train.sma <- matrix(
+  c(SSE_train.sma, MSE_train.sma, MAPE_train.sma),
+  nrow = 3,
+  byrow = TRUE
+)
+row.names(akurasi_train.sma) <- c("SSE", "MSE", "MAPE")
+colnames(akurasi_train.sma)  <- c("Akurasi m = 7")
+
+akurasi_train.sma
+
+```
+
+Dalam hal ini nilai MAPE data latih pada metode pemulusan SMA sebesar 6,43%. Nilai ini masih berada pada kategori akurasi yang baik, karena MAPE \< 10% umumnya dikategorikan akurat dalam peramalan. Selanjutnya dilakukan perhitungan nilai MAPE data uji pada metode pemulusan SMA untuk mengetahui kemampuan model dalam meramalkan data di luar data latih.
+
+```{r}
+# Error data uji (aktual - ramalan)
+error_test.sma <- test_ma.ts - data.gab[663:828, "ramalan"]
+
+SSE_test.sma  <- sum(error_test.sma^2, na.rm = TRUE)
+MSE_test.sma  <- mean(error_test.sma^2, na.rm = TRUE)
+MAPE_test.sma <- mean(abs(error_test.sma / test_ma.ts) * 100, na.rm = TRUE)
+
+akurasi_test.sma <- matrix(c(SSE_test.sma, MSE_test.sma, MAPE_test.sma),
+                           nrow = 3, byrow = TRUE)
+row.names(akurasi_test.sma) <- c("SSE", "MSE", "MAPE")
+colnames(akurasi_test.sma)  <- c("Akurasi m = 7")
+
+akurasi_test.sma
+
+```
+
+Nilai MAPE = 35.49%, artinya rata-rata kesalahan prediksi sekitar 35,49% dari nilai aktual. Nilai ini tergolong kurang baik, karena MAPE di atas 20% biasanya masuk kategori akurasi rendah.
+
+## Double Moving Average (DMA)
+
+```{r}
+#Pemulusan pertama (SMA)
+data.sma <- SMA(train_ma.ts, n = 7)
+
+# Pemulusan kedua (DMA)
+dma <- SMA(data.sma, n = 7)
+
+# Hitung At dan Bt
+At <- 2*data.sma - dma
+Bt <- (2/(7-1)) * (data.sma - dma)
+
+# Nilai peramalan 1 langkah ke depan
+data.dma <- At + Bt
+data.ramal2 <- c(NA, data.dma)
+
+# Ramalan h-step ke depan (untuk testing)
+t <- 1:length(test_ma.ts)
+f <- c()
+for (i in t) {
+  f[i] <- At[length(At)] + Bt[length(Bt)] * (i)
+}
+
+# Gabungkan data aktual, pemulusan, dan ramalan
+data.gab2 <- cbind(
+  aktual      = c(train_ma.ts, rep(NA, length(test_ma.ts))),
+  pemulusan1  = c(data.sma, rep(NA, length(test_ma.ts))),
+  pemulusan2  = c(data.dma, rep(NA, length(test_ma.ts))),
+  At          = c(At, rep(NA, length(test_ma.ts))),
+  Bt          = c(Bt, rep(NA, length(test_ma.ts))),
+  ramalan     = c(data.ramal2, f[-1])
+)
+
+head(data.gab2, 15)  # cek awal data
+tail(data.gab2, 15)  # cek akhir data
+```
+
+```{r}
+ts.plot(btc1.ts, xlab = "Time", ylab = "BTC Price", main = "DMA (m = 7) Bitcoin Price")
+points(btc1.ts)
+lines(data.gab2[,3], col = "green", lwd = 2) # pemulusan
+lines(data.gab2[,6], col = "red", lwd = 2)   # ramalan
+legend("topleft", c("Aktual", "Pemulusan", "Ramalan"), lty = 8,
+       col = c("black", "green", "red"), cex = 0.8)
+
+```
+
+```{r}
+# Akurasi data latih
+error_train.dma <- train_ma.ts - data.ramal2[1:length(train_ma.ts)]
+
+SSE_train.dma  <- sum(error_train.dma[8:length(train_ma.ts)]^2, na.rm = TRUE)
+MSE_train.dma  <- mean(error_train.dma[8:length(train_ma.ts)]^2, na.rm = TRUE)
+MAPE_train.dma <- mean(abs(error_train.dma[8:length(train_ma.ts)] /
+                           train_ma.ts[8:length(train_ma.ts)]) * 100, na.rm = TRUE)
+
+akurasi_train.dma <- matrix(c(SSE_train.dma, MSE_train.dma, MAPE_train.dma),
+                            nrow = 3, byrow = TRUE)
+row.names(akurasi_train.dma) <- c("SSE", "MSE", "MAPE")
+colnames(akurasi_train.dma)  <- c("Akurasi m = 7")
+akurasi_train.dma
+```
+
+```{r}
+# Akurasi data uji
+error_test.dma <- test_ma.ts - data.gab2[(length(train_ma.ts)+1):length(btc1.ts), "ramalan"]
+
+SSE_test.dma  <- sum(error_test.dma^2, na.rm = TRUE)
+MSE_test.dma  <- mean(error_test.dma^2, na.rm = TRUE)
+MAPE_test.dma <- mean(abs(error_test.dma / test_ma.ts) * 100, na.rm = TRUE)
+
+akurasi_test.dma <- matrix(c(SSE_test.dma, MSE_test.dma, MAPE_test.dma),
+                           nrow = 3, byrow = TRUE)
+row.names(akurasi_test.dma) <- c("SSE", "MSE", "MAPE")
+colnames(akurasi_test.dma)  <- c("Akurasi m = 7")
+akurasi_test.dma
+```
+
+Nilai **MAPE data latih sebesar 7,5%** menunjukkan bahwa model DMA dengan m=7 mampu melakukan peramalan yang cukup baik pada data latih, karena rata-rata kesalahan relatifnya kecil (sekitar 7,5%). Secara umum, MAPE di bawah 10% dapat dikategorikan sangat baik.
+
+Namun, **MAPE data uji sebesar 42,6%** menunjukkan bahwa ketika model diuji pada data baru (yang tidak digunakan dalam proses pelatihan), kesalahan peramalan meningkat drastis. Hal ini mengindikasikan bahwa model **kurang mampu menggeneralisasi** pola harga Bitcoin ke periode berikutnya. Dengan kata lain, model sangat cocok untuk data latih (in-sample) tetapi performanya buruk untuk data uji (out-of-sample).\
+\
+Metode **Simple Moving Average (SMA)** dan **Double Moving Average (DMA)** kurang tepat digunakan pada data Bitcoin rentang 1-828, karena karakteristik datanya menunjukkan adanya pola tren yang cukup kuat. SMA hanya menghitung rata-rata sederhana dari sejumlah periode sebelumnya tanpa mempertimbangkan adanya kenaikan atau penurunan jangka panjang, sehingga model cenderung menghasilkan ramalan yang tertinggal (lagging) terhadap data aktual. Hal ini membuat SMA tidak mampu menangkap dinamika perubahan harga Bitcoin yang bergerak cepat.
+
+# DES
+
+Metode *Simple Exponential Smoothing* (SES) cocok digunakan apabila data tidak memiliki pola tren maupun musiman, karena hasil peramalan yang dihasilkan cenderung konstan mengikuti rata-rata yang dipengaruhi bobot pemulusan. Namun, pada kasus harga Bitcoin, pola data jelas menunjukkan adanya tren naik-turun yang signifikan dalam jangka waktu tertentu. Jika menggunakan SES, pola tren tersebut tidak dapat tertangkap dengan baik sehingga ramalan cenderung underfitting terhadap data aktual.
+
+Oleh karena itu, digunakan metode *Double Exponential Smoothing* (DES). Metode DES merupakan pengembangan dari SES yang menambahkan komponen tren dalam proses pemulusan. Dengan adanya tahapan pemulusan untuk *level* dan *tren*, metode DES mampu menghasilkan ramalan yang tidak konstan, melainkan mengikuti arah perubahan data dari waktu ke waktu. Hal ini membuat DES lebih sesuai untuk data Bitcoin yang berfluktuasi dengan pola tren jangka panjang.
+
+```{r}
+# Lamda = 0.2 dan Beta = 0.2
+des.1 <- HoltWinters(train_ma.ts, gamma = FALSE, beta = 0.2, alpha = 0.2)
+plot(des.1)
+
+# Ramalan sepanjang data uji
+ramalandes1 <- forecast(des.1, h = length(test_ma.ts))
+ramalandes1
+
+# Lamda = 0.6 dan Beta = 0.3
+des.2 <- HoltWinters(train_ma.ts, gamma = FALSE, beta = 0.3, alpha = 0.6)
+plot(des.2)
+
+# Ramalan sepanjang data uji
+ramalandes2 <- forecast(des.2, h = length(test_ma.ts))
+ramalandes2
+
+```
+
+```{r}
+# Visualisasi DES vs Data Aktual (Bitcoin)
+plot(btc1.ts, main = "DES vs Data Aktual Bitcoin",
+     ylab = "Harga Bitcoin", xlab = "Time",
+     col = "black", lwd = 1)
+
+# Tambahkan fitted (hasil smoothing di data training)
+lines(des.1$fitted[,1], col = "blue", lty = 2, lwd = 2)
+
+# Tambahkan ramalan (forecast)
+lines(ramalandes1$mean, col = "red", lwd = 2)
+
+# Legenda
+legend("topleft",
+       legend = c("Aktual", "Fitted", "Ramalan"),
+       col = c("black", "blue", "red"),
+       lty = c(1, 2, 1), lwd = c(1, 2, 2), bty = "n")
+
+```
+
+```{r}
+# Lamda dan gamma optimum
+des.opt <- HoltWinters(train.ts, gamma = FALSE)
+des.opt
+plot(des.opt)
+
+# Ramalan
+ramalandesopt <- forecast(des.opt, h = 10)
+ramalandesopt
+
+
+```
+
+## Akurasi Data Latih 
+
+```{r}
+# Akurasi Data Training DES (λ=0.2, β=0.2)
+ssedes.train1 <- des.1$SSE
+msedes.train1 <- ssedes.train1 / length(train_ma.ts)
+sisaandes1    <- ramalandes1$residuals
+head(sisaandes1)
+
+mapedes.train1 <- sum(abs(sisaandes1[3:length(train_ma.ts)] / train_ma.ts[3:length(train_ma.ts)]) * 100) /
+                  length(train_ma.ts)
+
+akurasides.1 <- matrix(c(ssedes.train1, msedes.train1, mapedes.train1))
+row.names(akurasides.1) <- c("SSE", "MSE", "MAPE")
+colnames(akurasides.1) <- c("Akurasi λ=0.2, β=0.2")
+akurasides.1
+
+
+# Akurasi Data Training DES (λ=0.6, β=0.3)
+ssedes.train2 <- des.2$SSE
+msedes.train2 <- ssedes.train2 / length(train_ma.ts)
+sisaandes2    <- ramalandes2$residuals
+head(sisaandes2)
+
+mapedes.train2 <- sum(abs(sisaandes2[3:length(train_ma.ts)] / train_ma.ts[3:length(train_ma.ts)]) * 100) /
+                  length(train_ma.ts)
+
+akurasides.2 <- matrix(c(ssedes.train2, msedes.train2, mapedes.train2))
+row.names(akurasides.2) <- c("SSE", "MSE", "MAPE")
+colnames(akurasides.2) <- c("Akurasi λ=0.6, β=0.3")
+akurasides.2
+
+```
+
+Hasil akurasi dari data latih menunjukkan bahwa skenario 2 dengan λ=0.6 dan β=0.3 memberikan performa yang lebih baik dibandingkan skenario 1 (λ=0.2 dan β=0.2). Hal ini ditunjukkan oleh nilai SSE dan MSE yang lebih kecil serta MAPE yang lebih rendah. Meskipun demikian, keduanya masih dapat dikategorikan menghasilkan peramalan yang sangat baik karena nilai MAPE keduanya berada di bawah 10%.
+
+## Akurasi Data Uji
+
+```{r}
+# Tentukan panjang data yang sama antara ramalan dan data testing
+common_length <- min(
+  length(ramalandes1$mean),
+  length(ramalandes2$mean),
+  length(ramalandesopt$mean),
+  length(testing$price)
+)
+
+# Akurasi Data Testing - Skenario 1
+selisihdes1 <- ramalandes1$mean[1:common_length] - testing$price[1:common_length]
+SSEtestingdes1 <- sum(selisihdes1^2)
+MSEtestingdes1 <- mean(selisihdes1^2)  # langsung pakai mean
+MAPEtestingdes1 <- mean(abs(selisihdes1 / testing$price[1:common_length]) * 100)
+
+# Akurasi Data Testing - Skenario 2
+selisihdes2 <- ramalandes2$mean[1:common_length] - testing$price[1:common_length]
+SSEtestingdes2 <- sum(selisihdes2^2)
+MSEtestingdes2 <- mean(selisihdes2^2)
+MAPEtestingdes2 <- mean(abs(selisihdes2 / testing$price[1:common_length]) * 100)
+
+# Akurasi Data Testing - Optimum
+selisihdesopt <- ramalandesopt$mean[1:common_length] - testing$price[1:common_length]
+SSEtestingdesopt <- sum(selisihdesopt^2)
+MSEtestingdesopt <- mean(selisihdesopt^2)
+MAPEtestingdesopt <- mean(abs(selisihdesopt / testing$price[1:common_length]) * 100)
+
+# Gabungkan hasil ke dalam matrix
+akurasitestingdes <- matrix(
+  c(SSEtestingdes1, SSEtestingdes2, SSEtestingdesopt,
+    MSEtestingdes1, MSEtestingdes2, MSEtestingdesopt,
+    MAPEtestingdes1, MAPEtestingdes2, MAPEtestingdesopt),
+  nrow = 3, ncol = 3, byrow = TRUE
+)
+
+row.names(akurasitestingdes) <- c("SSE", "MSE", "MAPE")
+colnames(akurasitestingdes) <- c("DES Skenario 1", "DES Skenario 2", "DES Optimum")
+
+print(akurasitestingdes)
+
+
+```
+
+-   **MAPE DES Skenario 1 (17,94%)** lebih rendah daripada Skenario 2 (18,75%) dan Optimum (34,33%), sehingga secara relatif prediksi Skenario 1 lebih akurat.
+
+<!-- -->
+
+-    **DES Optimum justru memiliki kesalahan prediksi terbesar**, ditunjukkan oleh SSE dan MSE yang jauh lebih tinggi serta MAPE di atas 30%, sehingga tidak cocok untuk data rentang ini.
+
+<!-- -->
+
+-    **DES Skenario 1 adalah model terbaik** untuk meramalkan harga Bitcoin pada data uji karena menghasilkan error yang lebih rendah dan akurasi yang lebih baik.
+
+## Peramalan
+
+```{r}
+# Forecasting dengan DES Skenario 1
+forecast_des1 <- forecast(ramalandes1, h = 49)
+plot(forecast_des1, main = "Peramalan Harga Bitcoin dengan DES Skenario 1")
+
+# Forecasting dengan DES Skenario 2
+forecast_des2 <- forecast(ramalandes2, h = 49)
+plot(forecast_des2, main = "Peramalan Harga Bitcoin dengan DES Skenario 2")
+
+# Forecasting dengan DES Optimum
+forecast_desopt <- forecast(ramalandesopt, h = 49)
+plot(forecast_desopt, main = "Peramalan Harga Bitcoin dengan DES Optimum")
+
+```
+
+```{r}
+# Tentukan horizon forecasting
+horizon <- 49  
+
+# Plot data aktual (training)
+plot(train.ts, main="Forecasting Harga Bitcoin dengan Double Exponential Smoothing",
+     type="l", col="black", 
+     xlim=c(1, length(train.ts) + horizon),
+     xlab="Time", ylab="Harga Bitcoin")
+
+# Tambahkan hasil ramalan
+lines(forecast_des1$mean, col="red", lty=1, lwd=2)
+lines(forecast_des2$mean, col="blue", lty=1, lwd=2)
+lines(forecast_desopt$mean, col="green", lty=1, lwd=2)
+
+# Tambahkan interval prediksi (untuk DES Optimum)
+lines(forecast_desopt$lower[,2], col="green", lty=2)
+lines(forecast_desopt$upper[,2], col="green", lty=2)
+
+# Tambahkan legend
+legend("topleft",
+       legend=c("Data Aktual", "DES Skenario 1", "DES Skenario 2", "DES Optimum"),
+       col=c("black", "red", "blue", "green"),
+       lty=1, lwd=2, cex=0.8)
+
+```
+
+# Winter Aditif dan Multiplikatif
+
+Berdasarkan pola data harga harian Bitcoin rentang 1 - 828, terlihat bahwa pergerakan data lebih didominasi oleh tren jangka panjang yang cenderung meningkat tajam pada periode akhir, tanpa adanya indikasi pola musiman yang berulang secara konsisten. Metode Winters aditif umumnya digunakan apabila terdapat komponen musiman dengan amplitudo yang relatif konstan, sedangkan metode Winters multiplikatif digunakan ketika pola musiman ada namun besarnya fluktuasi ikut membesar seiring peningkatan level data. Karena data Bitcoin tidak menunjukkan adanya pola musiman yang stabil, baik model aditif maupun multiplikatif tidak sesuai untuk digunakan. Oleh karena itu, metode yang lebih tepat adalah Double Exponential Smoothing (DES) , karena model ini hanya mempertimbangkan level dan tren data tanpa memasukkan komponen musiman, sehingga lebih sesuai dengan karakteristik data Bitcoin.
+
+# Kesimpulan
+
+Berdasarkan hasil analisis terhadap data time series harga Bitcoin, metode **Double Exponential Smoothing (DES)** dipilih karena data menunjukkan adanya tren namun tidak memperlihatkan pola musiman yang jelas, sehingga metode pemulusan sederhana seperti **SMA dan DMA** kurang sesuai, sementara metode musiman seperti **Winter** juga tidak tepat.
+
+Hasil evaluasi pada **data latih (training)** menunjukkan bahwa **DES skenario 2 (λ = 0.6, β = 0.3)** memberikan akurasi terbaik, dengan nilai MAPE lebih rendah dibandingkan skenario lainnya. Namun, pada **data uji (testing)**, justru **DES skenario 1** memberikan hasil yang lebih baik, dengan nilai MAPE lebih kecil dibandingkan skenario 2 maupun model optimum.
+
+Perbedaan ini mengindikasikan bahwa skenario 2 cenderung mengalami **overfitting**, yaitu terlalu menyesuaikan diri dengan data historis sehingga kurang mampu meramalkan data baru. Dengan demikian, dapat disimpulkan bahwa **DES skenario 1 merupakan model terbaik untuk forecasting harga Bitcoin**, karena menghasilkan performa yang paling stabil dan akurat pada data uji, yang menjadi dasar utama dalam menilai kemampuan model untuk meramalkan data masa depan.
