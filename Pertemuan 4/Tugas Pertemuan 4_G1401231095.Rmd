@@ -1,0 +1,640 @@
+---
+title: "Tugas Pertemuan 4"
+author: "Nika Restu Widya Mujianasta G1401231095"
+date: "2025-09-20"
+output: html_document
+---
+
+# 1. Pembangkitan Proses MA(2)
+
+Akan dicoba membangkitkan proses MA paling sederhana, yaitu MA(2) dengan $\theta1 = 0.4$ dan $\theta2 = 0.6$ sebanyak 300 data (Manual dan dengan arima.sim).
+
+```{r}
+# Bangkitkan data MA(2) manual
+set.seed(1234)
+n <- 300
+theta1 <- 0.4
+theta2 <- 0.6
+
+wn <- rnorm(n+2)   # white noise (tambah 2 biar aman untuk lag)
+ma2 <- numeric(n)
+```
+
+## Manual
+
+Nilai-nilai selanjutnya dapat dicari melalui *loop*. Bentuk loop dapat dilihat dari rumus MA(1) yang hendak dibangkitkan:
+
+$$ y_t = e_t+0.5e_{t-1} $$
+
+banyak teta kita yang nentuin
+
+```{r}
+# loop: mulai dari t=3 karena ada lag 1 dan lag 2
+for(i in 3:(n+2)){
+  ma2[i-2] <- wn[i] + theta1*wn[i-1] + theta2*wn[i-2]
+}
+ma2
+```
+
+Data `ma2` adalah hasil simulasi proses **Moving Average orde 2 (MA(2))** dengan persamaan:
+
+$$
+y_t = e_t + 0.4 e_{t-1} + 0.6 e_{t-2}
+$$
+
+dengan white noise
+
+$$
+e_t \sim N(0,1).
+$$
+
+Model ini menunjukkan bahwa nilai $y_t$ pada waktu $t$ dipengaruhi oleh error saat ini ($e_t$) serta error satu periode sebelumnya ($e_{t-1}$) dan dua periode sebelumnya ($e_{t-2}$) dengan bobot masing-masing 0.4 dan 0.6.\
+Selain menggunakan cara di atas, pembangkitan proses MA(2) dapat dilakukan dengan fungsi `arima.sim()` sebagai berikut.
+
+c(0,0,2) = (AR,I,MA)=(p,d,q)
+
+yang dibangkitkan hanya MA=2 makanya q=2\
+
+## Arima.sim
+
+```{r}
+ma2_sim <- arima.sim(model=list(order=c(0,0,2), ma=c(0.4,0.6)), n=n)
+ma2_sim   # cek 10 data pertama
+
+```
+
+Data di atas merupakan hasil simulasi proses Moving Average orde dua (MA(2)) dengan panjang deret waktu 300 observasi. Proses ini menghasilkan deret waktu yang tidak bebas murni, melainkan memiliki autokorelasi hingga lag ke-2, sedangkan pada lag lebih tinggi nilai autokorelasinya cenderung mendekati nol, sesuai karakteristik MA(2).\
+
+# Karakteristik MA(2)
+
+## Plot Time Series
+
+```{r}
+ts.plot(ma2, main="Time Series Proses MA(2)", ylab="ma2")
+```
+
+Plot deret waktu hasil simulasi MA(2) menunjukkan fluktuasi data di sekitar rata-rata nol dengan variansi yang relatif konstan, tanpa tren jangka panjang maupun pola musiman. Hal ini mengindikasikan bahwa data bersifat **stasioner**.
+
+## Plot ACF
+
+```{r}
+acf(ma2, lag.max = 20, main="ACF dari MA(2)")
+```
+
+Hasil plot ACF dari data simulasi menunjukkan bahwa nilai autokorelasi signifikan hanya muncul pada lag ke-1 dan lag ke-2, sedangkan pada lag setelahnya nilai autokorelasi mendekati nol dan tidak lagi signifikan. Pola ini sesuai dengan karakteristik proses Moving Average orde 2 (MA(2)), di mana autokorelasi hanya bertahan hingga lag ke-2 kemudian terputus (cut-off). Dengan demikian, ACF mendukung bahwa data yang dibangkitkan memang mengikuti model MA(2).
+
+## Plot PACF 
+
+```{r}
+pacf(ma2, lag.max = 20, main="PACF dari MA(2)")
+```
+
+Plot PACF dari data simulasi MA(2) menunjukkan adanya autokorelasi parsial yang signifikan pada lag ke-1 dan lag ke-2, sedangkan pada lag setelahnya nilai PACF tidak signifikan dan berfluktuasi di sekitar nol. PACF menunjukkan penurunan secara bertahap (tailing off) setelah beberapa lag awal. Dengan demikian, hasil PACF mendukung identifikasi bahwa data yang digunakan berasal dari proses MA(2).
+
+## Plot EACF
+
+```{r}
+TSA::eacf(ma2)
+```
+
+Berdasarkan hasil EACF, terlihat bahwa pola segitiga **o** pertama kali muncul pada baris AR = 0 dan kolom MA = 2. Hal ini mengindikasikan bahwa model yang sesuai untuk data adalah **MA(2)**. Temuan ini sejalan dengan karakteristik proses Moving Average, di mana fungsi autokorelasi (ACF) terputus pada lag tertentu (cut off), sedangkan fungsi autokorelasi parsial (PACF) menunjukkan pola meluruh secara perlahan (tailing off). Dengan demikian, hasil EACF semakin memperkuat bahwa model yang digunakan adalah **MA(2)**.
+
+# Scatterplot Antar Lag
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-1}$
+
+```{r}
+# Yt (buang elemen pertama → mulai dari Y2 ... Yn)
+yt_ma <- ma2[-1]
+yt_ma
+
+# Yt-1 (buang elemen terakhir → mulai dari Y1 ... Y_{n-1})
+yt_1_ma <- ma2[-n]
+yt_1_ma
+```
+
+```{r}
+# Scatterplot
+plot(yt_ma, yt_1_ma,
+     main="Scatterplot Yt vs Yt-1",
+     xlab="Yt", ylab="Yt-1")
+
+```
+
+Berdasarkan scatterplot antara $Y_t$ dan $Y_{t-1}$, terlihat bahwa titik-titik data tidak membentuk pola garis lurus sempurna, melainkan menyebar dengan kecenderungan positif. Hal ini menunjukkan adanya hubungan linear yang lemah hingga sedang antara $Y_t$ dan $Y_{t-1}$. Dengan kata lain, nilai $Y_{t-1}$ yang lebih besar cenderung diikuti oleh nilai $Y_t$ yang juga lebih besar, dan sebaliknya. Hasil ini konsisten dengan sifat proses MA(2), di mana autokorelasi hanya muncul sampai pada lag ke-2. Oleh karena itu, scatterplot ini mendukung kesimpulan bahwa terdapat korelasi positif pada lag pertama, meskipun tidak terlalu kuat.
+
+```{r}
+cor(yt_ma,yt_1_ma)
+```
+
+Untuk model MA(2) dengan parameter $\theta_1 = 0.4$ dan $\theta_2 = 0.6$, autokovarians dihitung sebagai berikut:
+
+$$
+\gamma_0 = 1 + \theta_1^2 + \theta_2^2 = 1 + 0.4^2 + 0.6^2 = 1.52
+$$
+
+$$
+\gamma_1 = \theta_1 + \theta_1\theta_2 = 0.4 + (0.4)(0.6) = 0.64
+$$
+
+$$
+\gamma_2 = \theta_2 = 0.6
+$$
+
+Sehingga autokorelasi teoritis adalah
+
+$$
+\rho_1 = \frac{\gamma_1}{\gamma_0} = \frac{0.64}{1.52} \approx 0.421,
+\quad
+\rho_2 = \frac{\gamma_2}{\gamma_0} = \frac{0.6}{1.52} \approx 0.395.
+$$
+
+Berdasarkan hasil simulasi diperoleh nilai autokorelasi empiris pada lag-1 sebesar $\widehat{\rho}_1 \approx 0.529$, sedangkan secara teoritis diperoleh $\rho_1 \approx 0.421$. Kedua nilai tersebut sama-sama menunjukkan adanya korelasi positif pada lag-1. Perbedaan angka muncul akibat adanya variasi acak dari jumlah data simulasi yang terbatas ($n=300$).
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-2}$
+
+```{r}
+# Yt (mulai dari Y3 ... Yn)
+yt_2   <- ma2[-c(1,2)]
+yt_2
+
+# Yt-2 (mulai dari Y1 ... Y_{n-2})
+yt_min2 <- ma2[-c((n-1), n)]
+yt_min2
+```
+
+```{r}
+# Scatterplot
+plot(yt_2, yt_min2,
+     main="Scatterplot Yt vs Yt-2",
+     xlab="Yt", ylab="Yt-2")
+```
+
+Scatterplot menggambarkan hubungan antara $Y_t$ dengan $Y_{t-2}$. Terlihat bahwa titik-titik menyebar dengan kecenderungan adanya pola linear lemah yang mendukung adanya **korelasi positif** pada lag-2.
+
+```{r}
+cor(yt_2, yt_min2)
+```
+
+Untuk model MA(2) dengan parameter $\theta_1 = 0.4$ dan $\theta_2 = 0.6$, autokovarians dihitung sebagai berikut:
+
+$$
+\gamma_0 = 1 + \theta_1^2 + \theta_2^2 
+= 1 + 0.4^2 + 0.6^2 
+= 1 + 0.16 + 0.36 
+= 1.52
+$$
+
+$$
+\gamma_2 = \theta_2 = 0.6
+$$
+
+Sehingga autokorelasi teoritis pada lag-2 adalah
+
+$$
+\rho_2 = \frac{\gamma_2}{\gamma_0} 
+= \frac{0.6}{1.52} 
+\approx 0.395.
+$$
+
+Berdasarkan hasil simulasi diperoleh nilai autokorelasi empiris pada lag-2 sebesar $\widehat{\rho}_2 \approx 0.437$, sedangkan secara teoritis diperoleh $\rho_2 \approx 0.395$. Kedua nilai tersebut sama-sama menunjukkan adanya korelasi positif pada lag-2. Perbedaan angka muncul akibat adanya variasi acak dari jumlah data simulasi yang terbatas ($n=300$).
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-3}$
+
+```{r}
+# Yt (mulai dari Y4 ... Yn)
+yt_3   <- ma2[-c(1,2,3)]
+yt_3
+
+# Yt-3 (mulai dari Y1 ... Y_{n-3})
+yt_min3 <- ma2[-c((n-2), (n-1), n)]
+yt_min3
+```
+
+```{r}
+# Scatterplot
+plot(yt_3, yt_min3,
+     main="Scatterplot Yt vs Yt-3",
+     xlab="Yt", ylab="Yt-3")
+```
+
+Scatterplot menggambarkann hubungan antara $Y_t$ dengan $Y_{t-3}$. Terlihat bahwa titik-titik tersebar secara acak tanpa adanya pola yang jelas, menandakan bahwa korelasi antara $Y_t$ dan $Y_{t-3}$ sangat lemah. Hal ini sesuai dengan hasil perhitungan teoritis untuk model MA(2), di mana untuk lag lebih dari 2 nilai autokorelasi seharusnya nol
+
+```{r}
+# Korelasi empiris
+cor(yt_3, yt_min3)
+```
+
+Untuk model MA(2) dengan parameter $\theta_1 = 0.4$ dan $\theta_2 = 0.6$, diketahui bahwa autokovarians untuk $k > 2$ bernilai nol:
+
+$$
+\gamma_3 = 0
+$$
+
+Sehingga autokorelasi teoritis pada lag-3 adalah:
+
+$$
+\rho_3 = \frac{\gamma_3}{\gamma_0} 
+= \frac{0}{1.52} 
+= 0.
+$$
+
+Berdasarkan hasil simulasi diperoleh nilai autokorelasi empiris pada lag-3 sebesar $\widehat{\rho}_3 \approx 0.082$, sedangkan secara teoritis diperoleh $\rho_3 = 0$. Kedua hasil tersebut menunjukkan bahwa pada lag-3 korelasi sudah sangat lemah mendekati nol. Perbedaan kecil yang muncul merupakan akibat variasi acak dari jumlah data simulasi yang terbatas ($n=300$).
+
+# 2. Pembangkitan Proses AR(2)
+
+Proses AR dapat dituliskan sebagai berikut:
+
+$$ y_{t} = c + e_t + \phi_{1}Y_{t-1} + \phi_{2}Y_{t-2} + \dots + \phi_{q}Y_{t-q} = c+{e_t+\sum_{i=1}^p \phi_iY_{t-i}} $$ Terlihat bahwa $Y_t$ berperan penting dalam pembangkitan proses AR.
+
+Akan dicoba membangkitkan proses AR(2) dengan parameter \$\\phi_1 = 0.5\$ dan \$\\phi_2 = 0.2\$ sebanyak 300 observasi dengan konstanta \$c = 0\$.
+
+```{r}
+set.seed(123)
+n <- 300
+phi1 <- 0.5
+phi2 <- 0.2
+yt <- numeric(n)
+eps <- rnorm(n, 0, 1)
+```
+
+Nilai-nilai selanjutnya dapat dicari melalui loop. Bentuk loop dapat dilihat dari rumus AR(2) yang hendak dibangkitkan:
+
+$$
+Y_t = e_t + 0.5Y_{t-1} + 0.2Y_{t-2}
+$$
+
+## Manual
+
+```{r}
+ar2_series <- numeric(n)
+
+# Loop untuk AR(2)
+for (i in 3:n) {
+  ar2_series[i] <- eps[i] + phi1 * ar2_series[i-1] + phi2 * ar2_series[i-2]
+}
+
+ar2_series
+```
+
+Selain menggunakan cara di atas, pembangkitan proses AR dapat dilakukan dengan fungsi `arima.sim()` sebagai berikut.
+
+## Arima.sim
+
+```{r}
+set.seed(123)
+ar2 <- arima.sim(list(order=c(2,0,0), ar=c(0.5, 0.2)), n=300)
+ar2
+```
+
+Hasil pembangkitan proses AR(2) dengan parameter $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ menghasilkan 300 observasi data time series. Nilai-nilai yang dihasilkan bersifat acak, namun mengikuti dinamika dari model AR(2), yaitu:
+
+$$
+Y_t = 0.5 Y_{t-1} + 0.2 Y_{t-2} + e_t, \quad e_t \sim N(0,1).
+$$
+
+Dari output terlihat bahwa data mengalami fluktuasi yang dipengaruhi oleh nilai masa lalu pada lag-1 dan lag-2, sehingga pola pergerakan lebih kompleks dibandingkan AR(1). Ada periode di mana nilai $Y_t$ menjadi positif besar (misalnya sekitar indeks 240–270), dan ada pula periode ketika nilai $Y_t$ cukup rendah (sekitar indeks 120–130). Hal ini menggambarkan bahwa model AR(2) dapat menangkap keterkaitan jangka pendek dan jangka menengah pada data runtun waktu.
+
+## Karakteristik AR(2)
+
+### Plot Time Series
+
+```{r}
+ts.plot(ar2_series)
+```
+
+Plot time series hasil simulasi proses AR(2) dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ menunjukkan bahwa data berfluktuasi di sekitar rata-rata nol tanpa adanya tren jangka panjang, memiliki ketergantungan jangka pendek antar observasi, serta bersifat stasioner sesuai dengan karakteristik proses AR(2).
+
+### Plot ACF
+
+```{r}
+acf(ar2_series)
+```
+
+Plot ACF dari proses AR(2) dengan $\phi_1 = 0.5$ dan $\phi_2 = 0.2$ menunjukkan nilai autokorelasi yang tinggi pada lag awal (khususnya lag 1 dan lag 2), kemudian menurun secara bertahap mendekati nol. Pola penurunan yang perlahan ini sesuai dengan karakteristik proses AR(2), di mana autokorelasi tidak langsung terputus, melainkan mengalami decay secara bertahap. Hal ini mengindikasikan bahwa data memiliki ketergantungan jangka pendek dan mendukung sifat stasioner dari proses.
+
+### Plot PACF
+
+```{r}
+pacf(ar2_series)
+```
+
+Berdasarkan plot PACF pada Gambar di atas, terlihat bahwa nilai PACF signifikan hanya sampai lag ke-2, kemudian setelah itu nilai PACF berada di sekitar nol dan tidak signifikan. Hal ini sesuai dengan karakteristik proses AR(2), yaitu plot PACF terputus (cut-off) pada lag ke-2. Dengan demikian, hasil plot PACF mendukung bahwa data yang dibangkitkan mengikuti model AR(2).
+
+### Plot EACF
+
+```{r}
+TSA::eacf(ar2_series)
+```
+
+Berdasarkan pola segitiga nol pada tabel EACF di atas, terlihat bahwa segitiga nol berada pada ordo AR(2) dan ordo MA(0). Dengan demikian, hasil EACF mengindikasikan bahwa model yang sesuai untuk data ini adalah model ARMA(2,0), atau dengan kata lain merupakan proses AR(2).
+
+## Scatterplot Antar Lag
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-1}$
+
+```{r}
+# Y_t (tanpa observasi pertama)
+Yt <- ar2_series[-1]
+Yt
+
+# Y_{t-1} (tanpa observasi terakhir)
+Yt_1 <- ar2_series[-300]
+```
+
+```{r}
+# Scatterplot Yt vs Yt-1
+plot(x = Yt_1, y = Yt, 
+     main = "Scatterplot Yt vs Yt-1",
+     xlab = "Yt-1", 
+     ylab = "Yt", 
+     pch = 19, col = "blue")
+```
+
+Scatterplot antara $Y_t$ dengan $Y_{t-1}$ menunjukkan adanya hubungan linear positif yang cukup kuat. Hal ini terlihat dari pola titik yang cenderung membentuk garis naik, dapat disimpulkan bahwa $Y_t$ sangat dipengaruhi oleh nilai sebelumnya, dan proses yang dihasilkan bersifat stasioner sesuai asumsi AR(2).
+
+```{r}
+cor(Yt, Yt_1)
+```
+
+Berdasarkan hasil perhitungan, korelasi empiris antara $Y_t$ dan $Y_{t-1}$ adalah sebesar $0.5549983$. Sementara itu, secara teoritis nilai autokorelasi pada lag-1 dihitung dengan rumus\
+$$
+\rho_{1} = \frac{\phi_{1}}{1 - \phi_{2}} = \frac{0.5}{1 - 0.2} = 0.6403175.
+$$\
+Terlihat bahwa nilai empiris mendekati nilai teoritis meskipun tidak identik, yang wajar terjadi karena data yang digunakan berasal dari simulasi dengan jumlah observasi terbatas. Secara umum, hasil ini menunjukkan adanya konsistensi antara hasil simulasi dengan teori AR(2).
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-2}$
+
+```{r}
+# Y_t (tanpa 2 observasi pertama)
+Yt_lag2 <- ar2_series[-c(1,2)]
+Yt_lag2
+
+# Y_{t-2} (tanpa 2 observasi terakhir)
+Yt_min2 <- ar2_series[-c(299,300)]
+Yt_min2
+```
+
+```{r}
+# Scatter plot antara Y_t dan Y_{t-2}
+plot(
+  x = Yt_min2, 
+  y = Yt_lag2,
+  main = "Scatter Plot antara Y_t dan Y_{t-2} (AR(2))",
+  xlab = expression(Y[t-2]),
+  ylab = expression(Y[t]),
+  pch = 19,
+  col = "blue"
+)
+
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa terdapat hubungan positif antara $Y_t$ dengan $Y_{t-2}$. Hal ini sesuai dengan teori yang ada
+
+```{r}
+# Korelasi empiris lag-2
+cor(Yt_lag2, Yt_min2)
+```
+
+Berdasarkan hasil perhitungan, korelasi empiris antara $Y_t$ dan $Y_{t-2}$ adalah sebesar $0.4088021$. Sementara itu, secara teoritis nilai autokorelasi pada lag-2 dihitung dengan rumus:
+
+$$
+\rho_{2} = \phi_{2} + \phi_{1}\rho_{1}, \quad 
+\rho_{1} = \frac{\phi_{1}}{1 - \phi_{2}}
+$$
+
+dengan $\phi_{1} = 0.5$ dan $\phi_{2} = 0.2$. Sehingga:
+
+$$
+\rho_{1} = \frac{0.5}{1 - 0.2} = 0.625, \\
+\rho_{2} = 0.2 + 0.5 \times 0.625 = 0.5125.
+$$
+
+Terlihat bahwa nilai empiris ($0.4088$) mendekati nilai teoritis ($0.5125$), meskipun tidak identik. Perbedaan ini wajar karena data yang digunakan berasal dari simulasi dengan jumlah observasi terbatas. Secara umum, hasil ini menunjukkan adanya konsistensi antara hasil simulasi dengan teori AR(2).
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-3}$
+
+```{r}
+# Y_t (tanpa 3 observasi pertama)
+Yt_lag3 <- ar2_series[-c(1,2,3)]
+Yt_lag3
+
+# Y_{t-3} (tanpa 3 observasi terakhir)
+Yt_min3 <- ar2_series[-c(298,299,300)]
+Yt_min3
+```
+
+```{r}
+# Scatterplot Y_t vs Y_{t-3}
+plot(Yt_min3, Yt_lag3, 
+     main = "Scatterplot Yt vs Yt-3",
+     xlab = "Yt-3", 
+     ylab = "Yt", 
+     col = "blue", pch = 19)
+```
+
+Scatterplot antara $Y_t$ dengan $Y_{t-3}$ menunjukkan pola sebaran titik yang lebih menyebar dibandingkan scatterplot $Y_t$ dengan $Y_{t-1}$ maupun $Y_{t-2}$. Hubungan linear yang terlihat relatif lemah, meskipun masih terdapat kecenderungan arah positif. Hal ini konsisten dengan sifat proses AR(2), di mana $Y_t$ hanya dipengaruhi langsung oleh dua lag sebelumnya, yaitu $Y_{t-1}$ dan $Y_{t-2}$. Pengaruh $Y_{t-3}$ muncul secara tidak langsung melalui propagasi koefisien, sehingga korelasi empiris pada lag ke-3 bernilai lebih kecil dan mendekati nilai teoritisnya.
+
+```{r}
+# Korelasi empiris lag-3
+cor(Yt_lag3, Yt_min3)
+```
+
+Berdasarkan hasil perhitungan, korelasi empiris antara $Y_t$ dan $Y_{t-3}$ adalah sebesar $0.3066$. Sementara itu, secara teoritis nilai autokorelasi pada lag-3 dihitung dengan persamaan Yule-Walker:
+
+$$
+\rho_{k} = \phi_{1}\rho_{k-1} + \phi_{2}\rho_{k-2}, \quad k \geq 2
+$$
+
+Dengan $\phi_{1} = 0.5$, $\phi_{2} = 0.2$, $\rho_{1} = 0.625$, dan $\rho_{2} = 0.5125$, maka:
+
+$$
+\rho_{3} = 0.5 \times 0.5125 + 0.2 \times 0.625 = 0.38125.
+$$
+
+Terlihat bahwa nilai empiris ($0.3066$) mendekati nilai teoritis ($0.3813$), meskipun tidak identik. Perbedaan ini wajar karena data yang digunakan berasal dari simulasi dengan jumlah observasi terbatas. Secara umum, hasil ini menunjukkan adanya konsistensi antara hasil simulasi dengan teori AR(2).
+
+# 3. Fungsi pembangkitan ARMA
+
+Setelah mengetahui cara membangkitkan data berpola AR, MA, dan ARMA sederhana, bagaimana cara melakukan pembangkitan data berpola tersebut yang lebih kompleks? Apakah dapat dibuat suatu fungsi yang fleksibel yang memungkinan pembangkitan dengan berapapun jumlah koefisien?
+
+Pertama, lihat kembali bentuk umum data berpola ARMA.
+
+$$ y_{t} = c + \sum_{i=1}^p \phi_{i}y_{t-i} + \sum_{j=1}^q e_{t-j}+ e_{t} $$
+
+# Soal
+
+Bangkitkan model ARMA(2,2) dengan parameter $\theta_{1} = 0.4$, $\theta_{2} = 0.6$, $\phi_{1} = 0.5$, dan $\phi_{2} = 0.2$ sebanyak 300 data (baik secara manual maupun dengan fungsi \texttt{arima.sim}).
+
+Persamaan $$
+Y_t = 0.5Y_{t-1} + 0.2Y_{t-2} + e_t + 0.4e_{t-1} + 0.6e_{t-2}
+$$ merupakan sebuah model \textbf{ARMA(2,2)}, karena terdiri atas komponen autoregressive (AR) dengan orde 2 dan komponen moving average (MA) dengan orde 2.
+
+Dengan demikian, model ARMA(2,2) ini menggambarkan bahwa nilai $Y_t$ tidak hanya dipengaruhi oleh riwayat deret waktunya (komponen AR), tetapi juga oleh shock acak pada periode sebelumnya (komponen MA). Kombinasi ini membuat model ARMA lebih fleksibel dalam menangkap pola autokorelasi jangka pendek dibandingkan hanya menggunakan model AR atau MA saja.
+
+## Manual
+
+```{r}
+# Set seed baru
+set.seed(123)
+
+# Parameter ARMA(2,2)
+phi1 <- 0.5
+phi2 <- 0.2
+theta1 <- 0.4
+theta2 <- 0.6
+
+# Jumlah data
+n <- 300
+
+# White noise ~ N(0,1)
+wn <- rnorm(n, mean = 0, sd = 1)
+
+# Inisialisasi vektor hasil
+y.arma <- rep(0, n)
+
+# Bangkitkan data ARMA(2,2) secara manual
+for (t in 3:n) {
+  y.arma[t] <- y.arma[t] <- phi1 * y.arma[t-1] +
+             phi2 * y.arma[t-2] +
+             wn[t] + theta1 * wn[t-1] + theta2 * wn[t-2]
+
+}
+
+# Tampilkan 10 observasi pertama
+y.arma
+
+```
+
+## Arima.Sim
+
+```{r}
+
+# Simulasi ARMA(2,2) dengan arima.sim
+y.arma.sim <- arima.sim(
+  model = list(ar = c(0.5, 0.2), ma = c(0.4, 0.6)),
+  n = 300
+)
+y.arma.sim
+```
+
+## Karakterisik ARMA(2,2)
+
+### Plot time series
+
+```{r}
+ts.plot(y.arma)
+```
+
+Plot deret waktu di atas menunjukkan hasil simulasi model ARMA(2,2) dengan parameter \$\\phi_1 = 0.5\$, \$\\phi_2 = 0.2\$, \$\\theta_1 = 0.4\$, dan \$\\theta_2 = 0.6\$ sebanyak 300 observasi. Terlihat bahwa nilai \$Y_t\$ berfluktuasi di sekitar nol tanpa adanya tren yang jelas. Rentang fluktuasi cukup stabil, meskipun terdapat beberapa periode dengan nilai ekstrem, misalnya sekitar \$t=50\$ dan \$t=280\$. Secara umum, plot ini mengindikasikan bahwa data yang dibangkitkan bersifat \\textit{stasioner}, karena tidak menunjukkan pola tren jangka panjang maupun perubahan varians yang signifikan. Hal ini konsisten dengan sifat teoretis model ARMA(2,2) yang memang stasioner dengan parameter tersebut.
+
+### Plot ACF
+
+```{r}
+acf(y.arma)
+```
+
+Dilihat dari plot ACF tersebut, model ARMA(2,2) hasil simulasi memiliki plot ACF yang \*tails off\*.
+
+### Plot PACF
+
+```{r}
+pacf(y.arma)
+```
+
+Dilihat dari plot PACF tersebut, model ARMA(2,2) hasil simulasi memiliki plot PACF yang *tails off*.
+
+### Plot EACF
+
+```{r}
+TSA::eacf(y.arma)
+```
+
+Dilihat dari pola segitiga nol pada plot EACF, disimpulkan segitiga nol berada pada ordo AR(2) dan ordo MA(2).
+
+## Scatterplot Antar Lag
+
+#### Korelasi antara $Y_t$ dengan \$Y\_{t-1}\$
+
+```{r}
+arma_Yt1 <- y.arma.sim[-1]        # Yt
+arma_Yt1
+arma_Ytmin1 <- y.arma.sim[-300]   # Yt-1
+arma_Ytmin1
+```
+
+```{r}
+plot(arma_Ytmin1, arma_Yt1,
+     main = "Scatterplot Yt vs Yt-1 (ARMA(2,2))",
+     xlab = "Yt-1", ylab = "Yt",
+     col = "blue", pch = 16)
+```
+
+Berdasarkan scatterplot tersebut, terlihat bahwa terdapat hubungan positif antara $Y_t$ dengan $Y_{t-1}$. Hal ini sesuai dengan teori yang ada.
+
+```{r}
+cor(arma_Ytmin1, arma_Yt1)
+```
+
+Hasil perhitungan autokorelasi lag-1 dari data simulasi ARMA(2,2) memberikan nilai $\widehat{\rho}_1 = 0.8109$. Sementara itu, nilai teoritis berdasarkan persamaan $$
+\rho_1 = \frac{\phi_1 \gamma_0 + \phi_2 \gamma_1 + \sigma^2 \psi_1}{\gamma_0}
+= 0.8594
+$$ memberikan hasil yang sangat dekat dengan estimasi dari data.
+
+Perbedaan kecil antara nilai empiris dan teoritis wajar terjadi karena data yang digunakan hanya merupakan hasil simulasi sebanyak $n=300$ observasi. Secara umum, nilai estimasi empiris dan teoritis konsisten, sehingga dapat disimpulkan bahwa model ARMA(2,2) yang dibangkitkan sesuai dengan karakteristik teoritisnya.
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-2}$
+
+```{r}
+
+## Scatter Yt vs Yt-2
+arma_Yt2 <- y.arma.sim[-c(1,2)]       # Yt
+arma_Yt2
+arma_Ytmin2 <- y.arma.sim[-c(299,300)] # Yt-2
+arma_Ytmin2
+```
+
+```{r}
+plot(arma_Ytmin2, arma_Yt2,
+     main = "Scatterplot Yt vs Yt-2 (ARMA(2,2))",
+     xlab = "Yt-2", ylab = "Yt",
+     col = "red", pch = 16)
+```
+
+Dilihat dari scatterplot tersebut, terdapat hubungan positif antara $Y_t$ dengan $Y_{t-2}$. Hal ini sesuai dengan teori yang ada
+
+```{r}
+cor(arma_Ytmin2, arma_Yt2)
+```
+
+Selanjutnya, untuk lag-2 diperoleh nilai autokorelasi empiris $\widehat{\rho}_2 = 0.7155$, sedangkan nilai teoritis adalah $$
+\rho_2 = \frac{\phi_1 \gamma_1 + \phi_2 \gamma_0 + \sigma^2 \psi_2}{\gamma_0}
+= 0.7392.
+$$
+
+#### Korelasi antara $Y_t$ dengan $Y_{t-3}$
+
+```{r}
+arma_Yt3 <- y.arma.sim[-c(1,2,3)]         # Yt
+arma_Yt3
+arma_Ytmin3 <- y.arma.sim[-c(298,299,300)] # Yt-3
+arma_Ytmin3
+```
+
+```{r}
+plot(arma_Ytmin3, arma_Yt3,
+     main = "Scatterplot Yt vs Yt-3 (ARMA(2,2))",
+     xlab = "Yt-3", ylab = "Yt",
+     col = "darkgreen", pch = 16)
+```
+
+```{r}
+cor(arma_Ytmin3, arma_Yt3)
+```
+
+Hasil perhitungan autokorelasi lag-3 dari data simulasi ARMA(2,2) memberikan nilai $\widehat{\rho}_3 = 0.4798$. Nilai teoritis untuk autokorelasi lag-3 berdasarkan persamaan $$
+\rho_3 = \frac{\phi_1 \gamma_2 + \phi_2 \gamma_1 + \sigma^2 \psi_3}{\gamma_0} 
+= 0.4503
+$$ menunjukkan hasil yang kembali konsisten dengan estimasi empiris.
+
+Perbedaan kecil antara $\widehat{\rho}_3$ dan $\rho_3$ wajar terjadi karena data simulasi yang digunakan berjumlah terbatas ($n=300$). Secara keseluruhan, baik pada lag-1, lag-2, maupun lag-3, nilai autokorelasi empiris dan teoritis saling berdekatan. Hal ini semakin menegaskan bahwa data simulasi ARMA(2,2) yang dibangkitkan sesuai dengan karakteristik teoritis model.
