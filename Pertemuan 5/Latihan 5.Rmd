@@ -1,1 +1,291 @@
+---
+title: "Latihan Pertemuan 5 - Data Tidak Stasioner"
+author: "Nika Restu Widya Mujianasta G1401231095"
+date: "2025-09-30"
+output: html_document
+---
+
+```{r}
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+```
+
+# Impor Data Bitcoin 2011 - 2022
+```{r}
+library(rio)
+btc <- import("https://raw.githubusercontent.com/NikaRestuWidya/mpdw/main/btc_data_fix_kel10.csv")
+
+```
+
+# Baris 1 - 828
+```{r}
+btc1 <- btc[1:828, ]
+
+dim(btc1)
+head(btc1)
+tail(btc1)
+```
+
+# Cek Stasioner dalam Rataan dan Ragam 
+Pada dasarnya, pembangkitan data ARIMA akan menghasilkan data yang stasioner dalam rataan dan ragam karena akan mengikuti fungsi *default*-nya yang mengikuti pembangkitan bilangan acak normal dengan `mean=0` dan `ragam=1`
+
+## Plot Time Series
+
+```{r}
+plot(btc1$date, btc1$price, type = "l",
+     main = "Harga Bitcoin 2011-2013",
+     xlab = "Tanggal", ylab = "Harga")
+```
+Berdasarkan plot time series, data tidak stasioner karena terlihat tren naik yang kuat dan volatilitas meningkat.
+```{r}
+library(lattice)
+
+# Density plot harga Bitcoin
+densityplot(as.vector(btc1$price),
+            main = "Density Plot Harga Bitcoin",
+            xlab = "Harga",
+            col = "blue")
+
+```
+## Plot ACF
+```{r}
+acf(btc1$price, main = "ACF Harga Bitcoin")
+```
+Berdasarkan density plot, distribusi harga tidak normal, cenderung skewed, dan menunjukkan adanya volatilitas tinggi.
+
+## Uji ADF
+```{r}
+library(tseries)
+adf.test(btc1$price)   # H0: tidak stasioner
+```
+Hasil uji ADF menunjukkan bahwa data harga Bitcoin belum stasioner dalam rataan, sehingga perlu dilakukan transformasi.
+
+## Plot Box-Cox
+```{r}
+# Buat index waktu
+index <- seq(1:length(btc1$price))
+
+# Box-Cox Transformation
+library(MASS)
+bc <- boxcox(btc1$price ~ index, lambda = seq(-1,4,by=0.01))
+
+# Nilai lambda optimal (rounded)
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+# Selang kepercayaan 95%
+bc$x[bc$y > max(bc$y) - 1/2 * qchisq(.95,1)]
+
+```
+Berdasarkan hasil analisis Box-Cox, diperoleh nilai λ optimal sebesar 0,08 dengan selang kepercayaan 95% berada pada rentang [0,05; 0,11]. Nilai λ ini jelas berbeda dari 1 yang menunjukkan kondisi tanpa transformasi, sehingga dapat disimpulkan bahwa data dalam bentuk aslinya tidak memiliki ragam yang konstan atau dengan kata lain tidak stasioner dalam ragam. Selang kepercayaan yang tidak mencakup nilai 1 semakin memperkuat bukti adanya heteroskedastisitas pada data tersebut. Namun, karena nilai λ yang diperoleh cukup dekat dengan nol, maka transformasi logaritma atau transformasi pangkat kecil mendekati 0,08 dapat digunakan untuk menstabilkan varians sehingga data menjadi lebih homogen dan memenuhi asumsi stasioner dalam ragam.
+
+# Penanganan Tidak Stasioner dalam Rataan dan Ragam
+
+## Differencing 1x
+```{r}
+library(tseries)
+
+# Differencing 1x
+btc1.diff1 <- diff(log(btc1$price), differences = 1)
+
+# Plot hasil differencing
+plot.ts(btc1.diff1, 
+        main = "Differencing 1x Log Harga Bitcoin",
+        ylab = "Log Harga Difference", xlab = "Waktu")
+
+```
+### Plot ACF
+```{r}
+acf(btc1.diff1, main = "ACF Setelah Differencing 1x")
+```
+
+### Uji ADF
+```{r}
+adf.test(btc1.diff1)
+```
+
+Setelah dilakukan differencing satu kali, data harga Bitcoin menjadi stasioner. Hal ini terlihat dari plot yang sudah berosilasi di sekitar mean nol, ACF yang cepat turun ke nol, serta hasil uji ADF (p-value < 0,05) yang menolak hipotesis nol non-stasioner. Dengan demikian, differencing orde 1 sudah cukup, dan data dapat digunakan untuk pemodelan ARIMA dengan d = 1.
+
+### Plot Boxcox setelah Penanganan 
+```{r}
+library(MASS)
+
+# Geser agar semua positif
+x_pos <- btc1.diff1 + abs(min(btc1.diff1)) + 1
+index <- seq_along(x_pos)
+
+# Box-Cox
+bc <- boxcox(lm(x_pos ~ index), lambda = seq(-2, 2, 0.1))
+
+# Lambda optimal dan CI
+lambda_opt <- bc$x[which.max(bc$y)]
+ci <- bc$x[bc$y > max(bc$y) - 0.5 * qchisq(.95,1)]
+cat("λ optimal =", lambda_opt, "\n")
+cat("CI 95% =", range(ci), "\n")
+```
+Berdasarkan Box-Cox, nilai λ optimal sebesar 1,72 dengan CI [1,19; 2,00], yang tidak mencakup nilai 1. Hal ini menunjukkan bahwa data hasil differencing satu kali belum sepenuhnya stasioner dalam ragam, meskipun variansnya relatif lebih stabil.
+
+# Penanganan Tidak Stasioner dalam Ragam 
+## Transformasi Box-Cox
+
+Transformasi Box-Cox digunakan untuk menstabilkan ragam data time series agar tidak terjadi perbedaan fluktuasi yang terlalu besar dari waktu ke waktu. Secara umum, transformasi ini dikendalikan oleh parameter λ, di mana jika λ = 1 data tidak berubah, λ = 0 setara dengan transformasi logaritma, dan nilai λ lainnya akan mengubah data sesuai pangkat tertentu. Dalam sintaks R, pertama kali dibuat sebuah fungsi boxcox_transform yang dapat menerima data dan nilai λ sebagai input. Fungsi ini akan secara otomatis memilih logaritma apabila λ mendekati nol, dan menggunakan rumus umum Box-Cox jika λ bernilai selain nol.
+
+Setelah itu, fungsi diterapkan pada data Bitcoin yang sudah melalui proses differencing satu kali untuk menstabilkan rata-ratanya. Nilai λ optimal yang digunakan adalah 1.72, sehingga diperoleh data baru btc1.bc yang telah ditransformasi. Data hasil transformasi kemudian divisualisasikan dengan plot.ts untuk melihat pola time series setelah diferencing dan transformasi Box-Cox.
+
+```{r}
+# Fungsi transformasi Box-Cox manual
+boxcox_transform <- function(x, lambda){
+  if(abs(lambda) < 1e-8) return(log(x))
+  return((x^lambda - 1)/lambda)
+}
+
+# Terapkan Box-Cox dengan λ = 1.72
+btc1.bc <- boxcox_transform(x_pos, 1.72)
+```
+
+### Plot Time Series setelah Differencing 1x + Transformasi Box-Cox λ=1.72
+```{r}
+# Plot hasil
+plot.ts(btc1.bc, main = "Data Bitcoin (Differencing 1x + Box-Cox λ=1.72)",
+        ylab = "Transformed Data", xlab = "Time")
+
+```
+Gambar menunjukkan hasil plot data Bitcoin setelah dilakukan differencing satu kali dan transformasi Box-Cox dengan λ = 1,72. Dari grafik terlihat bahwa fluktuasi data menjadi lebih stabil dibandingkan sebelum transformasi, dimana variabilitas atau penyebaran data sudah relatif homogen di sepanjang rentang waktu. Hal ini menunjukkan bahwa penerapan Box-Cox setelah differencing berhasil mengurangi heteroskedastisitas, sehingga data lebih mendekati kondisi stasioner dalam ragam. Dengan kata lain, kombinasi differencing 1x dan Box-Cox λ = 1,72 menjadikan data lebih siap untuk dimodelkan dengan metode time series seperti ARIMA.
+
+### Uji ADF setelah Differencing 1x + Transformasi Box-Cox λ=1.72
+```{r}
+adf_test <- adf.test(btc1.bc)
+print(adf_test)
+```
+Hasil Augmented Dickey-Fuller Test (ADF) pada data Bitcoin setelah dilakukan differencing 1 kali menunjukkan nilai statistik uji sebesar -7,2404 dengan p-value 0,01. Karena p-value lebih kecil dari taraf signifikansi 5%, maka hipotesis nol yang menyatakan data tidak stasioner ditolak. Dengan demikian, dapat disimpulkan bahwa data yang telah melalui proses differencing 1 kali sudah stasioner dalam rataan.
+
+### Box-Cox setelah Differencing 1x + Transformasi Box-Cox λ=1.72
+```{r}
+# Geser agar positif (penting untuk Box-Cox)
+btc1.bc.pos <- btc1.bc + abs(min(btc1.bc)) + 1
+
+bc2 <- boxcox(lm(btc1.bc.pos ~ index), lambda = seq(-2, 2, 0.1))
+
+lambda_opt2 <- bc2$x[which.max(bc2$y)]
+ci2 <- bc2$x[bc2$y > max(bc2$y) - 0.5 * qchisq(.95,1)]
+
+cat("Lambda optimal setelah transformasi =", lambda_opt2, "\n")
+cat("CI 95% setelah transformasi =", range(ci2), "\n")
+
+```
+Hasil analisis Box-Cox pada data yang telah ditransformasi menunjukkan nilai λ optimal sebesar 0,91 dengan selang kepercayaan 95% berada pada rentang [0,51; 1,31]. Selang kepercayaan ini mencakup nilai 1, sehingga dapat disimpulkan bahwa ragam data sudah homogen atau stasioner dalam ragam. Oleh karena itu, setelah penerapan differencing satu kali dan transformasi Box-Cox, data Bitcoin periode 1–828 telah memenuhi asumsi stasioner baik dalam rataan maupun ragam
+
+# Partisi Data Sudah Stasioner dalam Rataan dan Ragam
+
+Partisi data dilihat dari Plot Time Series setelah Differencing 1x + Transformasi Box-Cox λ=1.72, dengan pembagian sebagai berikut : 
+
+Segmen 1 : (1–414) memiliki fluktuasi yang relatif lebih tinggi dan cenderung tidak stabil dibandingkan dengan segmen akhir.
+
+Segmen 2 : (415–828) menunjukkan pola yang lebih tenang dengan variabilitas lebih kecil, meskipun masih terdapat lonjakan pada titik tertentu.
+
+## Segmen 1
+
+### Plot Time Series
+```{r}
+dt_seg1 <- btc1.bc[1:414] |> ts()
+
+# Statistik dasar
+mean(dt_seg1)
+var(dt_seg1)
+
+# Plot time series
+dt_seg1 |> as_tsibble() |>
+  ggplot(aes(x = index, y = value)) +
+  geom_line() + theme_bw() +
+  xlab("Obs") + ylab("Transformed Value") +
+  ggtitle("Segmen 1 (1–414)")
+```
+Dari plot deret waktu Segmen 1, terlihat bahwa data menyebar di sekitar nilai tengah tertentu tanpa tren yang jelas. Fluktuasi naik-turun relatif stabil, meskipun terdapat beberapa lonjakan tajam, namun secara umum pola pita varians tidak berubah signifikan. Hal ini mengindikasikan bahwa data cenderung stasioner dalam rataan dan ragam.
+
+### Plot ACF
+```{r}
+acf(dt_seg1)
+```
+Plot ACF pada Segmen 1 menunjukkan bahwa autokorelasi menurun cepat (tailing off) setelah lag awal, dan tidak ada pola sinusoidal atau autokorelasi signifikan yang bertahan lama. Hal ini mendukung indikasi bahwa data sudah bersifat stasioner, karena autokorelasi hanya muncul kuat pada lag pertama.
+
+### Uji ADF
+```{r}
+tseries::adf.test(dt_seg1)
+```
+Hasil uji Augmented Dickey-Fuller (ADF) menghasilkan nilai statistik = -6.4748 dengan p-value = 0.01. Karena p-value < 0.05, maka hipotesis nol ($H_0$: data tidak stasioner dalam rataan) ditolak. Artinya, data Segmen 1 terbukti stasioner dalam rataan secara statistik.
+
+### Plot Box-Cox
+```{r}
+dt_seg1_shift <- dt_seg1 - min(dt_seg1) + 1e-6
+index1 <- seq_along(dt_seg1_shift)
+
+bc_seg1 <- boxcox(lm(dt_seg1_shift ~ index1), lambda = seq(-2, 2, 0.1))
+lambda_seg1 <- bc_seg1$x[which.max(bc_seg1$y)]
+ci_seg1 <- bc_seg1$x[bc_seg1$y > max(bc_seg1$y) - 1/2*qchisq(.95, 1)]
+
+cat("Lambda optimal segmen 1 =", lambda_seg1, "\n")
+cat("CI 95% segmen 1 =", range(ci_seg1), "\n")
+
+```
+Hasil analisis Box-Cox pada Segmen 1 menunjukkan bahwa nilai λ optimum adalah 0.9899 dengan interval kepercayaan 95% = [0.8687, 1.1515]. Karena nilai λ=1 berada dalam interval tersebut, dapat disimpulkan bahwa data Segmen 1 sudah stasioner dalam ragam, sehingga transformasi tambahan tidak diperlukan.
+
+## Segmen 2
+### Plot Time Series
+```{r}
+# Segmen 2
+dt_seg2 <- btc1.bc[415:828] |> ts()
+dt_seg2 <- na.omit(dt_seg2)
+
+
+# Statistik dasar
+mean(dt_seg2)
+var(dt_seg2)
+
+# Plot time series
+dt_seg2 |> as_tsibble() |>
+  ggplot(aes(x = index, y = value)) +
+  geom_line() + theme_bw() +
+  xlab("Obs") + ylab("Transformed Value") +
+  ggtitle("Segmen 2 (415–828)")
+```
+Dari plot time series segmen 2 terlihat bahwa data cenderung berfluktuasi di sekitar nilai 0.5–0.7 dengan beberapa outlier (nilai ekstrim). Secara umum pola tidak menunjukkan tren naik/turun yang jelas, sehingga cenderung stasioner dalam rata-rata, meskipun ada variasi sesaat.
+
+### Plot ACF
+```{r}
+acf(dt_seg2)
+```
+Hasil ACF menunjukkan bahwa hampir semua lag berada di dalam batas signifikansi, hanya lag awal yang tampak sedikit signifikan. Hal ini mengindikasikan tidak ada autokorelasi kuat pada data, mendukung indikasi stasioneritas.
+
+### Uji ADF
+```{r}
+tseries::adf.test(dt_seg2)
+```
+Nilai statistik ADF = -5.2995 dengan p-value = 0.01 < 0.05. Dengan demikian, H0 (data mengandung unit root / tidak stasioner) ditolak, artinya data sudah stasioner tanpa perlu diferensiasi lebih lanjut.
+
+```{r}
+# Box-Cox
+index2 <- seq_along(dt_seg2)
+bc2 <- boxcox(lm(dt_seg2 ~ index2), lambda = seq(-2, 2, by = 0.1))
+
+# Lambda optimal dan CI
+lambda_opt2 <- bc2$x[which.max(bc2$y)]
+ci2 <- bc2$x[bc2$y > max(bc2$y) - 1/2 * qchisq(.95,1)]
+cat("Lambda optimal segmen 2 =", lambda_opt2, "\n")
+cat("CI 95% segmen 2 =", range(ci2), "\n")
+```
+Hasil Box-Cox menunjukkan interval λ (lambda) yang mencakup nilai 1 dalam rentang 95% CI. Artinya, transformasi tidak diperlukan (transformasi identitas sudah memadai). Dengan kata lain, model dapat dibangun menggunakan data asli tanpa transformasi Box-Cox.
+
+# SELESAI - KESIMPULAN AKHIR
+1. Data awal (1–828) harga Bitcoin menunjukkan tren naik yang kuat dan volatilitas meningkat, sehingga tidak stasioner baik dalam rataan maupun ragam.
+
+2. Untuk mengatasi hal tersebut, dilakukan differencing 1 kali. Hasil plot time series dan uji ADF menunjukkan bahwa data sudah stasioner dalam rataan, karena tidak ada lagi tren jangka panjang dan fluktuasi berpusat di sekitar rataannya.
+
+3. Selanjutnya, dilakukan transformasi Box-Cox untuk menstabilkan ragam. Dari hasil analisis diperoleh nilai λ optimum sebesar 0.91 dengan interval kepercayaan 95% = [0.51 ; 1.31]. Karena interval tersebut memuat nilai 1, maka data dapat dianggap stasioner dalam ragam.
+
+4. Dengan demikian, setelah melalui tahapan differencing 1x dan transformasi Box-Cox, data sudah memenuhi asumsi stasioner dalam rataan dan ragam, sehingga siap digunakan untuk tahap pemodelan lebih lanjut.
+
+
+
 
