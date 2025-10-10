@@ -1,1 +1,384 @@
+---
+title: "Latihan Tugas Pertemuan 6 - Pendugaan Parameter, Diagnostik Model, dan Peramalan"
+author: "Nika Restu Widya Mujianasta G1401231095"
+date: "2025-09-30"
+output: html_document
+---
+# Packages
+```{r}
+library(ggplot2)
+library(tsibble)
+library(tseries)
+library(MASS)
+library(forecast)
+library(TSA)
+library(TTR)
+library(aTSA)
+library(graphics)
+```
 
+# Impor Data Bitcoin Baris 1 - 828
+```{r}
+library(rio)
+btc <- import("https://raw.githubusercontent.com/NikaRestuWidya/mpdw/main/btc_data_fix_kel10.csv")
+btc1 <- btc[1:828, ]  # data baris 1-828
+# Buat time series hanya dari kolom harga (price)
+btc.ts <- ts(btc1$price, start = 1, frequency = 1)
+```
+
+# Eksplorasi Data
+## Plot Data Penuh
+```{r}
+plot.ts(btc.ts,
+        lty = 1,
+        xlab = "Waktu",
+        ylab = "Harga Bitcoin (USD)",
+        main = "Plot Data Harga Bitcoin")
+```
+Berdasarkan plot data deret waktu, terlihat bahwa harga Bitcoin mengalami tren meningkat secara tajam pada periode akhir pengamatan. Pada periode awal hingga pertengahan, harga cenderung stabil dengan fluktuasi kecil, namun mulai menunjukkan kenaikan signifikan menjelang akhir periode. Berdasarkan pola data tersebut, pembagian data latih dan data uji dapat ditetapkan dengan proporsi 86% : 14%, sehingga model dapat menangkap pola tren kenaikan harga dengan baik.
+
+## Plot Data Latih
+```{r}
+n <- length(btc1$price)
+n_train <- round(0.86 * n) #Membagi  data Latih (86%)
+btc_train <- btc1$price[1:n_train]
+train.ts <- ts(btc_train)
+
+# Plot data latih
+plot.ts(train.ts,
+        lty = 1,
+        xlab = "Waktu",
+        ylab = "Harga Bitcoin",
+        main = "Plot Data Latih (Train) Harga Bitcoin")
+
+```
+Berdasarkan plot data deret waktu pada data latih, terlihat bahwa harga Bitcoin mengalami pola tren meningkat secara keseluruhan, dengan beberapa periode fluktuasi tajam. Pada awal periode, harga relatif stabil di level rendah, kemudian terjadi lonjakan harga yang signifikan pada pertengahan periode sebelum mengalami penurunan dan stabilisasi sementara, dan akhirnya menunjukkan tren kenaikan kembali menjelang akhir data latih.
+
+Pola seperti ini mengindikasikan bahwa data tidak stasioner dalam rataan (mean) karena terdapat perubahan tren yang jelas dari waktu ke waktu. Nilai rata-rata data tidak konstan dan terus berubah seiring perkembangan waktu. Selain itu, variasi data juga tampak tidak konstan, sehingga kemungkinan besar data juga tidak stasioner dalam varians.
+
+## Plot Data Uji
+```{r}
+n <- length(btc1$price)
+n_train <- round(0.86 * n)
+btc_test <- btc1$price[(n_train + 1):n]
+test.ts <- ts(btc_test)
+
+# Plot data uji
+plot.ts(test.ts,
+        lty = 1,
+        xlab = "Waktu",
+        ylab = "Harga Bitcoin",
+        main = "Plot Data Uji (Test) Harga Bitcoin")
+
+```
+Berdasarkan plot data deret waktu pada data uji, terlihat bahwa harga Bitcoin menunjukkan tren meningkat secara tajam sepanjang periode pengujian. Pada awal periode uji, harga masih relatif rendah dan meningkat secara perlahan, namun mulai terjadi kenaikan yang signifikan dan berkelanjutan menjelang akhir periode.
+
+Pola ini memperkuat temuan sebelumnya bahwa data harga Bitcoin tidak stasioner dalam rataan (mean), karena nilai rata-rata terus meningkat seiring waktu tanpa kembali ke nilai keseimbangan tertentu. Selain itu, variasi harga (varians) juga tampak semakin besar pada periode akhir, sehingga kemungkinan data tidak stasioner dalam varians.
+
+# Uji Stasioneritas Data
+## Plot ACF
+```{r}
+acf(train.ts,
+    main = "Plot ACF Data Latih (Train) Harga Bitcoin")
+
+```
+Berdasarkan plot ACF, terlihat bahwa plot ACF data menurun secara perlahan (*tails of slowly*). Hal ini juga menjadi indikasi bahwa data tidak stasioner dalam rataan
+
+## Uji ADF
+```{r}
+tseries::adf.test(train.ts)
+```
+$H_0$ : Data tidak stasioner dalam rataan
+
+$H_1$ : Data stasioner dalam rataan
+
+Berdasarkan uji ADF tersebut, didapat *p-value* sebesar 0.5809 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa data tidak stasioner dalam rataan. Hal ini sesuai dengan hasil eksplorasi menggunakan plot time series dan plot ACF, sehingga ketidakstasioneran model kedepannya harus ditangani
+
+## Plot Box-cox
+```{r}
+# Buat index sesuai jumlah data latih
+index <- seq(1:length(train.ts))
+
+# Plot Box-Cox untuk mencari transformasi lambda terbaik
+bc <- MASS::boxcox(train.ts ~ index, lambda = seq(-2, 2, by = 0.1))
+
+# Ambil nilai lambda terbaik (yang memaksimalkan log-likelihood)
+lambda <- bc$x[which.max(bc$y)]
+lambda
+
+# Hitung selang kepercayaan untuk lambda
+bc$x[bc$y > max(bc$y) - 1/2 * qchisq(.95, 1)]
+
+```
+Berdasarkan plot Box-Cox, diperoleh nilai λ optimum sebesar 0,303 dengan selang kepercayaan 95% antara 0,263 dan 0,343. Selang ini tidak memuat nilai 1, sehingga dapat disimpulkan bahwa data belum stasioner dalam ragam. Oleh karena itu, transformasi Box-Cox dengan λ = 0,303 direkomendasikan untuk menstabilkan ragam data sebelum dilakukan pemodelan lebih lanjut.
+
+# Penanganan Ketidakstasioneran Data
+## Transformasi Box-Cox
+```{r}
+# Transformasi Box-Cox menggunakan lambda hasil sebelumnya
+lambda <- 0.3030303
+train.trans <- (train.ts^lambda - 1) / lambda
+
+```
+
+## Plot data hasil transformasi Box-Cox
+
+```{r}
+plot(train.trans,
+     type = "l",                        # "l" untuk line plot
+     main = "Plot Data Setelah Transformasi Box-Cox",
+     xlab = "Waktu",
+     ylab = "Harga Bitcoin (Transformasi)")
+
+# Tambahan optional: buat garis rata-rata
+abline(h = mean(train.trans), col = "red", lwd = 2)
+
+```
+
+Berdasarkan plot data setelah dilakukan transformasi Box-Cox, terlihat bahwa ragam data menjadi lebih stabil dibandingkan sebelum transformasi. Fluktuasi nilai tidak lagi terlalu tajam dan persebaran data di sekitar garis rata-rata (garis merah) relatif lebih merata.
+
+Meskipun demikian, masih terdapat pola tren naik dan turun pada mean data dari waktu ke waktu, yang menunjukkan bahwa data belum stasioner dalam mean, tetapi sudah lebih mendekati stasioner dalam ragam.
+
+```{r}
+tseries::adf.test(train.trans)
+```
+Berdasarkan uji ADF terhadap data hasil transformasi Box-Cox, diperoleh p-value sebesar 0.6133 yang lebih besar dari taraf nyata 5%, sehingga gagal menolak H0 dan menandakan bahwa data tidak stasioner dalam rataan. Hal ini sejalan dengan hasil eksplorasi menggunakan plot deret waktu yang masih menunjukkan adanya tren pada data, meskipun ragamnya telah lebih stabil. Dengan demikian, ketidakstasioneran dalam rataan perlu ditangani, salah satunya dengan melakukan differencing sebelum proses pemodelan deret waktu dilanjutkan.
+
+## Differencing 1x Setelah Transformasi
+```{r}
+train.diff <- diff(train.trans, differences = 1)
+
+# Plot hasil differencing
+plot(train.diff,
+     type = "l",
+     main = "Plot Data Setelah Differencing",
+     xlab = "Waktu",
+     ylab = "Data Transformasi yang Didifference")
+
+```
+Berdasarkan plot setelah dilakukan differencing orde 1, terlihat bahwa fluktuasi data sudah berpusat di sekitar rata-rata nol dengan ragam yang lebih stabil dibandingkan data awal. Pola tren yang sebelumnya muncul telah hilang, dan data menunjukkan pergerakan acak tanpa kecenderungan naik atau turun yang jelas. Kondisi ini mengindikasikan bahwa proses differencing berhasil mengatasi ketidakstasioneran dalam rataan sehingga data cenderung stasioner dan siap untuk tahap pemodelan lebih lanjut.
+
+## Uji ADF setelah differencing
+```{r}
+tseries::adf.test(train.diff)
+```
+
+Berdasarkan hasil uji ADF terhadap data yang telah melalui proses differencing, diperoleh p-value sebesar 0.01 yang lebih kecil dari taraf nyata 5%. Dengan demikian, hipotesis nol yang menyatakan bahwa data memiliki akar unit ditolak. Hasil ini menunjukkan bahwa data telah stasioner dalam rataan. Hal ini juga sesuai dengan plot deret waktu setelah differencing yang memperlihatkan fluktuasi data di sekitar nilai rata-rata tanpa adanya tren yang jelas. Oleh karena itu, data sudah memenuhi asumsi stasioneritas dan siap untuk tahap pemodelan deret waktu (misalnya ARIMA).
+
+# Identifikasi Model
+## Plot ACF
+```{r}
+acf(train.diff, main = "Plot ACF Data Setelah Differencing")
+```
+Berdasarkan plot ACF tersebut, terlihat bahwa autokorelasi mengalami cut off pada lag ke-1, di mana lag selanjutnya berada dalam batas signifikansi. Pola ini menunjukkan adanya kemungkinan komponen MA dengan ordo 1. Jika nantinya pada plot PACF terlihat pola tails off, maka model tentatif yang sesuai adalah ARIMA(0,1,1). Dengan demikian, hasil plot ACF ini menjadi dasar awal dalam proses identifikasi model ARIMA.
+
+## Plot PACF
+```{r}
+pacf(train.diff, main="Plot PACF Data Setelah Differencing")
+```
+Berdasarkan plot tersebut, terlihat bahwa plot PACF cenderung tails off (tidak menunjukkan cut off pada lag tertentu), sedangkan plot ACF menunjukkan cut off pada lag ke-1. Dengan pola ACF cut off (lag 1) dan PACF tails off, model tentatif yang paling konsisten adalah ARIMA(0,1,1).
+
+Jika nantinya baik plot ACF maupun PACF keduanya dianggap tails off (keduanya memudar secara bertahap tanpa cut off yang jelas), maka model kandidat alternatif yang layak dipertimbangkan adalah ARIMA(1,1,1).
+
+```{r}
+# EACF pada data hasil differencing
+eacf(train.diff)
+```
+Berdasarkan hasil identifikasi model menggunakan plot EACF, terlihat bahwa pola segitiga nol (triangle of O’s) mulai terbentuk pada baris AR = 0 dan kolom MA = 2. Hal ini mengindikasikan bahwa model ARIMA yang potensial untuk data ini berada di sekitar titik tersebut. Oleh karena itu, model tentatif yang dapat dipertimbangkan adalah ARIMA(0,1,2), ARIMA(1,1,2), dan ARIMA(2,1,2). Model-model ini dipilih karena pola nol konsisten muncul pada beberapa baris awal sehingga sesuai dengan karakteristik segitiga nol pada EACF. Pemilihan model terbaik akan dilakukan pada tahap selanjutnya melalui proses estimasi parameter dan evaluasi kriteria seperti AIC, BIC, serta uji signifikansi parameter.
+
+# Pendugaan Parameter Model Tentatif
+## ARIMA (0,1,1)
+```{r}
+model1.da <- Arima(train.diff, order = c(0,0,1), method = "ML")
+summary(model1.da)
+lmtest::coeftest(model1.da)
+```
+
+
+## ARIMA (0,1,2)
+```{r}
+model2.da <- Arima(train.diff, order = c(0,0,2), method = "ML")
+summary(model2.da)
+lmtest::coeftest(model2.da)
+```
+
+
+## ARIMA (1,1,2)
+```{r}
+model3.da <- Arima(train.diff, order = c(1,0,2), method = "ML")
+summary(model3.da)
+lmtest::coeftest(model3.da)
+```
+
+## ARIMA (2,1,2)
+```{r}
+model4.da <- Arima(train.diff, order = c(2,0,2), method = "ML")
+summary(model4.da)
+lmtest::coeftest(model4.da)
+```
+```{r}
+# Bandingkan AIC dari semua model
+AIC(model1.da, model2.da, model3.da, model4.da)
+
+```
+Berdasarkan hasil perbandingan nilai AIC dari keempat model tentatif, diperoleh bahwa model ARIMA(0,1,2) memiliki nilai AIC terkecil, yaitu sebesar -900,7456. Karena kriteria pemilihan model didasarkan pada nilai AIC terendah, maka model ARIMA(0,1,2) dipilih sebagai model terbaik pada tahap pendugaan parameter. Nilai AIC yang bernilai negatif menunjukkan bahwa model ini memiliki tingkat goodness of fit yang baik dengan kompleksitas yang relatif rendah dibandingkan model lainnya.
+
+# Analisis Sisaan
+
+Model terbaik hasil identifikasi kemudian dicek asumsi sisaannya. Sisaan model ARIMA harus memenuhi asumsi normalitas, kebebasan sisaan, dan kehomogenan ragam. Diagnostik model dilakukan secara eksplorasi dan uji formal.
+
+## Eksplorasi Sisaan
+```{r}
+# Eksplorasi Sisaan
+sisaan.da <- model2.da$residuals   # ganti model sesuai model terbaik, misalnya model2.da
+par(mfrow = c(2, 2))
+
+# 1. Plot QQ untuk melihat normalitas
+qqnorm(sisaan.da)
+qqline(sisaan.da, col = "blue", lwd = 2)
+
+# 2. Plot sisaan terhadap waktu (time plot)
+plot(c(1:length(sisaan.da)), sisaan.da,
+     type = "l",
+     main = "Plot Sisaan terhadap Waktu",
+     xlab = "Waktu",
+     ylab = "Sisaan")
+
+# 3. Plot ACF sisaan
+acf(sisaan.da, main = "ACF Sisaan")
+
+# 4. Plot PACF sisaan
+pacf(sisaan.da, main = "PACF Sisaan")
+
+par(mfrow = c(1, 1))
+
+```
+Berdasarkan hasil eksplorasi sisaan pada model ARIMA(0,1,2), terlihat bahwa titik-titik pada plot Q-Q tidak sepenuhnya mengikuti garis lurus , meskipun sebagian besar titik berada di sekitar garis tersebut. Hal ini menunjukkan bahwa asumsi kenormalan sisaan secara umum terpenuhi, namun terdapat sedikit penyimpangan pada ekor distribusi. Plot sisaan terhadap waktu memperlihatkan pola penyebaran acak di sekitar garis nol tanpa adanya tren tertentu, sehingga dapat dikatakan bahwa sisaan bersifat acak dan memiliki rata-rata mendekati nol. Selain itu, plot ACF dan PACF dari sisaan menunjukkan bahwa seluruh lag berada dalam batas signifikansi, menandakan tidak adanya autokorelasi yang signifikan antar-sisaan. Dengan demikian, secara eksploratif dapat disimpulkan bahwa sisaan model bersifat white noise dan memenuhi asumsi dasar ARIMA, meskipun untuk memastikan perlu dilakukan pengujian formal lebih lanjut seperti uji Ljung-Box dan uji normalitas.
+
+## Uji Formal 
+### 1.Sisaan Menyebar Normal
+```{r}
+sisaan.da <- model2.da$residuals
+ks.test(sisaan.da, "pnorm")  # tak tolak H0 -> sisaan menyebar normal
+
+```
+Pada tahapan ini uji formal yang digunakan untuk normalitas adalah uji Kolmogorov-Smirnov (KS). Hipotesis pada uji KS adalah sebagai berikut.
+
+$H_0$ : Sisaan menyebar normal
+
+$H_1$ : Sisaan tidak menyebar normal
+
+Berdasarkan uji KS tersebut, didapat *p-value* sebesar 0.00 yang kurang dari taraf nyata 5% sehingga tolak $H_0$ dan menandakan bahwa sisaan tidak menyebar normal. Hal ini sesuai dengan hasil eksplorasi menggunakan plot kuantil-kuantil normal.
+
+### 2.Sisaan saling bebas/tidak ada autokorelasi 
+```{r}
+Box.test(sisaan.da, type = "Ljung")  #tak tolak H0 > sisaan saling bebas
+```
+Selanjutnya akan dilakukan uji formal untuk kebebasan sisaan menggunakan uji Ljung-Box. Hipotesis yang digunakan adalah sebagai berikut.
+
+$H_0$ : Sisaan saling bebas
+
+$H_1$ : Sisaan tidak tidak saling bebas
+
+Berdasarkan uji Ljung-Box tersebut, didapat *p-value* sebesar 0.975ang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa sisaan saling bebas. Hal ini berbeda dengan eksplorasi.
+
+### 3.Sisaan homogen 
+```{r}
+Box.test((sisaan.da)^2, type = "Ljung")  #tak tolak H0 > sisaan homogen
+```
+Hipotesis yang digunakan untuk uji kehomogenan ragam adalah sebagai berikut.
+
+$H_0$ : Ragam sisaan homogen
+
+$H_1$ : Ragam sisaan tidak homogen
+
+Berdasarkan uji Ljung-Box terhadap sisaan kuadrat tersebut, didapat *p-value* sebesar 2.2e-16 yang kurang dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa ragam sisaan tidak homogen.
+
+
+### 4.Nilai tengah sisaan sama dengan nol 
+```{r}
+t.test(sisaan.da, mu = 0, conf.level = 0.95)  #tak tolak h0 > nilai tengah sisaan sama dengan 0
+```
+Terakhir, dengan uji-t, akan dicek apakah nilai tengah sisaan sama dengan nol. Hipotesis yang diujikan sebagai berikut.
+
+$H_0$ : nilai tengah sisaan sama dengan 0
+
+$H_1$ : nilai tengah sisaan tidak sama dengan 0
+
+Berdasarkan uji-ttersebut, didapat *p-value* sebesar 0.9996 yang lebih besar dari taraf nyata 5% sehingga tak tolak $H_0$ dan menandakan bahwa nilai tengah sisaan sama dengan nol. Hal ini berbeda dengan eksplorasi.
+
+
+# Overfitting
+
+Setelah dilakukan pengujian terhadap beberapa model dengan kompleksitas yang lebih tinggi (overfitting), diperoleh bahwa model-model tersebut tidak memberikan peningkatan kinerja yang signifikan dibandingkan model tentatif terbaik. Berdasarkan hasil perbandingan nilai AIC, uji asumsi sisaan, serta kestabilan parameter, dapat disimpulkan bahwa model ARIMA(0,1,2) tetap menjadi model terbaik. Oleh karena itu, model ini dipilih untuk digunakan pada tahap peramalan (forecasting) selanjutnya.
+
+Untuk memastikan bahwa model terbaik yang telah dipilih (ARIMA(0,1,2)) sudah optimal, dilakukan proses overfitting check dengan menambah kompleksitas model menjadi ARIMA(0,1,3). Model ini merupakan pengembangan dari model sebelumnya dengan menambahkan satu komponen moving average (MA) tambahan untuk melihat apakah peningkatan kompleksitas mampu memperbaiki kinerja model.
+
+```{r}
+# Pastikan library sudah dipanggil
+library(forecast)
+library(lmtest)
+
+# Model Overfitting (menambah satu parameter MA)
+model_overfit <- Arima(train.diff, order = c(0, 1, 3), method = "ML")
+summary(model_overfit)
+
+# Uji signifikansi parameter
+lmtest::coeftest(model_overfit)
+
+```
+Hasil estimasi menunjukkan bahwa seluruh parameter pada model ARIMA(0,1,3) signifikan pada taraf 5%, dengan nilai p-value masing-masing < 0.01. Meskipun demikian, nilai AIC = -893.46 pada model ini lebih tinggi dibandingkan model ARIMA(0,1,2) yang memiliki nilai AIC = -900.75. Hal ini mengindikasikan bahwa penambahan satu parameter MA tidak meningkatkan kinerja model, bahkan justru menurunkan efisiensi model karena kompleksitas yang lebih besar.
+
+Dengan demikian, berdasarkan pertimbangan nilai AIC dan prinsip parsimony, model ARIMA(0,1,2) tetap dipilih sebagai model terbaik dan paling efisien, serta digunakan untuk tahap peramalan (forecasting) selanjutnya.
+
+# Peramalan
+Peramalan dilakukan menggunakan fungsi `forecast()` . Contoh peramalan berikut ini dilakukan untuk 30 hari ke depan.
+
+```{r}
+ramalan.da <- forecast::forecast(model2.da, h = 30)
+ramalan.da
+data.ramalan.da <- ramalan.da$mean
+
+# Menampilkan plot hasil peramalan
+plot(ramalan.da,
+     main = "Hasil Peramalan Menggunakan Model ARIMA(0,1,2)",
+     xlab = "Periode",
+     ylab = "Nilai Ramalan",
+     col = "blue")
+
+```
+Berdasarkan plot hasil peramalan menggunakan model ARIMA(0,1,2), terlihat bahwa data hasil prediksi untuk 30 periode ke depan relatif stabil dan tidak menunjukkan adanya pola tren yang signifikan, baik naik maupun turun. Hal ini menunjukkan bahwa model memperkirakan nilai data masa depan akan berfluktuasi di sekitar rata-rata yang konstan. Area berwarna abu-abu menggambarkan interval kepercayaan hasil ramalan, yang menunjukkan tingkat ketidakpastian model terhadap prediksi. Semakin lebar pita interval tersebut, semakin tinggi tingkat ketidakpastian.
+Secara keseluruhan, hasil peramalan menunjukkan bahwa model ARIMA(0,1,2) mampu memberikan prediksi yang realistis dan stabil, sesuai dengan karakteristik data yang telah terdiferensiasi dan bersifat stasioner.
+
+```{r}
+pt_1 <- tail(train.ts, 1)  
+hasil.forc.diff <- data.ramalan.da  
+hasil <- diffinv(hasil.forc.diff, differences = 1) + as.numeric(pt_1)
+
+# Plot hasil ramalan terhadap data asli
+ts.plot(train.ts, hasil,
+        col = c("black", "blue"),
+        lty = c(1, 2),
+        main = "Plot Data Asli dan Hasil Ramalan Model ARIMA(0,1,2)",
+        ylab = "Nilai",
+        xlab = "Periode")
+legend("topleft", legend = c("Data Asli", "Hasil Ramalan"),
+       col = c("black", "blue"), lty = c(1, 2), bty = "n")
+
+```
+
+```{r}
+# Membuat matriks perbandingan antara data aktual (test.ts) dan hasil peramalan
+perbandingan.da <- cbind(
+  Aktual = head(test.ts, n = 30),
+  Hasil_Forecast = hasil[-1][1:30]
+)
+perbandingan.da
+forecast::accuracy(hasil[-1][1:30], head(test.ts, n = 30))
+
+```
+Berdasarkan hasil perbandingan antara data aktual dan hasil peramalan menggunakan model ARIMA(0,1,2), terlihat bahwa nilai hasil ramalan cukup mendekati data aktual meskipun terdapat sedikit penyimpangan di beberapa titik. Hasil evaluasi akurasi menunjukkan nilai Mean Error (ME) sebesar -0.303, yang menandakan adanya kecenderungan model untuk sedikit meremehkan (underestimate) nilai sebenarnya. Nilai Root Mean Square Error (RMSE) sebesar 0.360 dan Mean Absolute Error (MAE) sebesar 0.334 menunjukkan bahwa rata-rata kesalahan peramalan cukup kecil relatif terhadap skala data.
+
+Selanjutnya, nilai Mean Absolute Percentage Error (MAPE) sebesar 2.49% mengindikasikan bahwa model memiliki tingkat akurasi yang sangat baik, karena MAPE di bawah 10% umumnya dikategorikan sebagai peramalan yang akurat. Nilai Theil’s U sebesar 2.94 sedikit di atas 1, menunjukkan bahwa meskipun model sudah cukup baik dalam menangkap pola data, masih terdapat ruang untuk perbaikan dalam hal efisiensi peramalan dibandingkan metode naïf.
+
+Secara keseluruhan, model ARIMA(0,1,2) dinilai layak dan cukup andal untuk melakukan peramalan data pada periode berikutnya, dengan kesalahan peramalan yang relatif kecil dan kestabilan model yang baik.
